@@ -37,6 +37,10 @@ const SPEED_INCREMENT_PER_LEVEL = 50;
 let roomId = null;
 let playerId = null;
 let gameSocket = null;
+let opponentPlayerId = null;
+let opponentBoardContainer = null;
+const OPPONENT_COLS = 10; // Logical dimensions for opponent board
+const OPPONENT_ROWS = 20;
 
 // --- Tetrominoes ---
 const TETROMINOES = {
@@ -286,6 +290,18 @@ function lockPiece() {
     });
   });
   // After locking, the currentPiece is null until a new one spawns
+
+  // Send board update to server in multiplayer context
+  if (gameSocket && gameSocket.readyState === WebSocket.OPEN && roomId && playerId) {
+    // console.log('Sending board update to server.'); // For debugging
+    gameSocket.send(JSON.stringify({
+        type: 'BOARD_UPDATE',
+        payload: {
+            // Server knows roomId and playerId from the WebSocket connection context
+            board: board // Send the entire current board state
+        }
+    }));
+  }
 }
 
 function clearLines() {
@@ -619,11 +635,34 @@ function initializeGameWebSocket() {
             switch (message.type) {
                 case 'ROOM_JOIN_CONFIRMATION':
                     console.log(`Successfully joined room: ${message.payload.roomId}. Players now in room: ${message.payload.playersInRoom.join(', ')}. Your ID: ${message.payload.yourPlayerId}`);
-                    // Update UI (e.g., display player list, room ID)
-                    // Can also confirm if message.payload.yourPlayerId matches our playerId
                     if(playerId !== message.payload.yourPlayerId) {
                         console.warn("Player ID mismatch from server confirmation!");
                     }
+
+                    // Identify opponent in a 2-player game
+                    const allPlayerIds = message.payload.playersInRoom;
+                    if (allPlayerIds && allPlayerIds.length === 2) { // Assuming 2-player game for this setup
+                        opponentPlayerId = allPlayerIds.find(id => id !== playerId);
+                        if (opponentPlayerId) {
+                            opponentBoardContainer = document.getElementById('opponent-1-board-container');
+                            console.log(`Opponent identified: ${opponentPlayerId}. Opponent board container:`, opponentBoardContainer);
+                            if (!opponentBoardContainer) {
+                                console.error("Element with ID 'opponent-1-board-container' not found!");
+                            }
+                        } else {
+                            console.warn("Could not identify opponent from player list or you are alone.");
+                        }
+                    } else if (allPlayerIds) {
+                        console.log(`Room has ${allPlayerIds.length} players. Opponent display for 1 specific opponent.`);
+                        // Potentially pick the first other player as "main" opponent to display
+                        opponentPlayerId = allPlayerIds.find(id => id !== playerId);
+                         if (opponentPlayerId) {
+                            opponentBoardContainer = document.getElementById('opponent-1-board-container');
+                            console.log(`Main opponent identified: ${opponentPlayerId}.`);
+                        }
+                    }
+
+
                     // Display a waiting message or enable a "Ready" button
                     const gameBoardContainer = document.getElementById('game-board-container');
                     if (gameBoardContainer && !document.getElementById('waiting-message')) {
@@ -656,9 +695,39 @@ function initializeGameWebSocket() {
                     console.log('Received game state update:', message.payload);
                     // This is where you'd handle opponent board rendering, etc.
                     break;
+                case 'OPPONENT_BOARD_UPDATE':
+                    if (!message.payload) {
+                        console.error('OPPONENT_BOARD_UPDATE received with no payload.');
+                        return;
+                    }
+                    const { opponentId: receivedOpponentId, board: opponentBoardData } = message.payload;
+
+                    if (!receivedOpponentId || !opponentBoardData) {
+                        console.error('OPPONENT_BOARD_UPDATE missing opponentId or board data.');
+                        return;
+                    }
+
+                    // Check if this update is for the currently tracked opponent
+                    if (opponentPlayerId === receivedOpponentId) {
+                        // console.log(`Received board update for opponent ${receivedOpponentId}`); // For debugging
+                        drawOpponentBoard(opponentBoardData);
+                    } else {
+                        // This might happen if there are more than 2 players and the UI isn't set up for all,
+                        // or if opponentPlayerId wasn't correctly identified.
+                        // console.warn(`Received board update for an unexpected opponent ID: ${receivedOpponentId}. Current tracked opponent: ${opponentPlayerId}`);
+                    }
+                    break;
                 case 'PLAYER_LEFT_ROOM': // Placeholder
                      console.log(`Player ${message.payload.playerId} left the room.`);
                      // Update UI, perhaps show a message
+                     // If the player who left was the one being displayed, clear their board.
+                     if (message.payload.playerId === opponentPlayerId) {
+                         console.log(`Opponent ${opponentPlayerId} left the room. Clearing their board display.`);
+                         if (opponentBoardContainer) {
+                             opponentBoardContainer.innerHTML = '<p style="color: #ccc; font-size: 0.8em; text-align:center; padding-top: 80px;">Opponent Left</p>';
+                         }
+                         opponentPlayerId = null; // Stop tracking this opponent
+                     }
                     break;
                 case 'ERROR':
                     console.error(`Error from server: ${message.payload.message || message.payload}`);
@@ -716,6 +785,40 @@ function initializeGameWebSocket() {
          if(pauseButton) pauseButton.disabled = true;
     };
 }
+
+function drawOpponentBoard(boardData) {
+    if (!opponentBoardContainer) {
+        // This warning can be frequent if opponent disconnects or display isn't always on
+        // console.warn('Opponent board container not found or opponent not identified yet.');
+        return;
+    }
+    opponentBoardContainer.innerHTML = ''; // Clear previous state
+
+    boardData.forEach((row, rowIndex) => {
+        // Ensure we don't try to draw more rows than OPPONENT_ROWS
+        if (rowIndex >= OPPONENT_ROWS) return;
+        row.forEach((cellValue, colIndex) => {
+            // Ensure we don't try to draw more columns than OPPONENT_COLS
+            if (colIndex >= OPPONENT_COLS) return;
+
+            if (cellValue !== 0) { // cellValue is the color/ID from opponent's board
+                const block = document.createElement('div');
+                block.classList.add('opponent-block');
+
+                // Find color based on cellValue (piece ID)
+                // TETROMINOES should be globally accessible
+                const pieceColor = Object.values(TETROMINOES).find(t => t.id === cellValue)?.color || 'grey'; // Fallback color
+                block.style.backgroundColor = pieceColor;
+
+                // CSS Grid uses 1-based indexing for grid-column-start and grid-row-start
+                block.style.gridColumnStart = colIndex + 1;
+                block.style.gridRowStart = rowIndex + 1;
+                opponentBoardContainer.appendChild(block);
+            }
+        });
+    });
+}
+
 
 function initiateGameCountdown() {
     const gameBoardContainer = document.getElementById('game-board-container');

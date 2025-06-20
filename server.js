@@ -282,6 +282,53 @@ wss.on('connection', (ws) => {
                 ws.send(JSON.stringify({ type: 'PONG' }));
                 break;
 
+            case 'BOARD_UPDATE':
+                const clientDataForBoardUpdate = clients.get(ws);
+                if (!clientDataForBoardUpdate || !clientDataForBoardUpdate.roomId) {
+                    console.error('BOARD_UPDATE received from client not in a room or unknown client.');
+                    // ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'You are not in a room to send board updates.' }}));
+                    return;
+                }
+
+                const { board: receivedBoardData } = parsedMessage.payload;
+                if (!receivedBoardData) {
+                    console.error('BOARD_UPDATE received without board data from client:', clientDataForBoardUpdate.id);
+                    ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'Board data missing in BOARD_UPDATE.' }}));
+                    return;
+                }
+
+                const currentRoom = activeRooms.get(clientDataForBoardUpdate.roomId);
+                if (!currentRoom) {
+                    console.error(`Room not found (${clientDataForBoardUpdate.roomId}) for BOARD_UPDATE from client: ${clientDataForBoardUpdate.id}`);
+                    // This might happen if room was cleaned up but client sent one last update.
+                    return;
+                }
+
+                // Optional: Store the latest board state in the player's record within the room
+                const playerRecord = currentRoom.players.find(p => p.id === clientDataForBoardUpdate.id);
+                if (playerRecord) {
+                    playerRecord.currentBoard = receivedBoardData; // Store for potential future use (e.g. new joiners seeing current state)
+                }
+
+                // Broadcast this board update to all *other* players in the room
+                currentRoom.players.forEach(playerInRoom => {
+                    if (playerInRoom.id !== clientDataForBoardUpdate.id && playerInRoom.ws && playerInRoom.ws.readyState === WebSocket.OPEN) {
+                        try {
+                            // console.log(`Sending OPPONENT_BOARD_UPDATE from ${clientDataForBoardUpdate.id} to ${playerInRoom.id}`);
+                            playerInRoom.ws.send(JSON.stringify({
+                                type: 'OPPONENT_BOARD_UPDATE',
+                                payload: {
+                                    opponentId: clientDataForBoardUpdate.id, // The ID of the player whose board this is
+                                    board: receivedBoardData
+                                }
+                            }));
+                        } catch (sendError) {
+                            console.error(`Error sending OPPONENT_BOARD_UPDATE to player ${playerInRoom.id}:`, sendError);
+                        }
+                    }
+                });
+                break;
+
             default:
                 console.log(`Unknown message type from ${clientId}: ${parsedMessage.type}`);
                 ws.send(JSON.stringify({ type: 'ERROR', payload: `Unknown message type: ${parsedMessage.type}` }));
