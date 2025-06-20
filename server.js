@@ -336,17 +336,33 @@ wss.on('connection', (ws) => {
         if (clientRoomId) {
             const room = activeRooms.get(clientRoomId);
             if (room) {
+                let leavingPlayerName = disconnectedClientId; // Default to ID
                 const playerInRoom = room.players.find(p => p.id === disconnectedClientId);
                 if (playerInRoom) {
                     playerInRoom.status = 'disconnected';
-                    console.log(`Player ${disconnectedClientId} marked as disconnected in room ${clientRoomId}.`);
-                    // Notify other players in the room (future enhancement)
-                    // room.players.forEach(p => {
-                    //     if (p.id !== disconnectedClientId && p.ws && p.ws.readyState === WebSocket.OPEN) {
-                    //         p.ws.send(JSON.stringify({ type: 'PLAYER_LEFT_ROOM', payload: { playerId: disconnectedClientId }}));
-                    //     }
-                    // });
+                    // leavingPlayerName = playerInRoom.name || playerInRoom.id; // If you store names
+                    console.log(`Player ${leavingPlayerName} marked as disconnected in room ${clientRoomId}.`);
+
+                    // Notify remaining players in the room
+                    room.players.forEach(p => {
+                        if (p.id !== disconnectedClientId && p.status === 'ingame_connected' && p.ws && p.ws.readyState === WebSocket.OPEN) {
+                            try {
+                                p.ws.send(JSON.stringify({
+                                    type: 'PLAYER_LEFT_ROOM',
+                                    payload: {
+                                        playerId: disconnectedClientId,
+                                        message: `Player ${leavingPlayerName} has left the game.`
+                                    }
+                                }));
+                            } catch (sendError) {
+                                console.error(`Error sending PLAYER_LEFT_ROOM to player ${p.id}:`, sendError);
+                            }
+                        }
+                    });
+                } else {
+                     console.warn(`Player ${disconnectedClientId} who disconnected was not found in room ${clientRoomId}'s player list.`);
                 }
+
                 // Optional: Check if room is now empty or game should end
                 const activePlayersInRoom = room.players.filter(p => p.status === 'ingame_connected');
                 if (activePlayersInRoom.length === 0 && room.gameStarted) { // Or < 2 for competitive games
