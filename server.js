@@ -9,12 +9,11 @@ const PORT = process.env.PORT || 3000;
 
 // Serve main.html at the root
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'main.html'));
+    res.sendFile(path.join(__dirname, 'public', 'main.html'));
 });
 
-// Serve other static files from the root directory
-// This will serve index.html, style.css, script.js, main_menu.js, etc.
-app.use(express.static(path.join(__dirname, '/')));
+// Serve other static files from the 'public' directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 server.listen(PORT, () => {
     console.log(`HTTP server listening on port ${PORT}`);
