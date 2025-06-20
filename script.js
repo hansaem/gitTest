@@ -6,7 +6,6 @@ const gameBoard = document.getElementById('game-board');
 const scoreElement = document.getElementById('score');
 const levelDisplayElement = document.getElementById('level-display'); // Added
 const kosDisplayElement = document.getElementById('kos-display');     // Added
-// const attackerInfoElement = document.getElementById('attacker-info'); // Optional, not used yet
 
 const nextPieceElement = document.getElementById('next-piece');
 const startButton = document.getElementById('start-button');
@@ -29,10 +28,15 @@ let gameInterval = null;
 // Game state variables for stats and progression
 let currentLevel = 1;
 let totalLinesCleared = 0;
-let kos = 0; // Placeholder for KOs display
-const LINES_PER_LEVEL = 5; // Lines needed to clear to level up
-const INITIAL_GAME_SPEED = 1000; // Milliseconds for the game loop interval
-const SPEED_INCREMENT_PER_LEVEL = 50; // Reduce interval by this much per level
+let kos = 0;
+const LINES_PER_LEVEL = 5;
+const INITIAL_GAME_SPEED = 1000;
+const SPEED_INCREMENT_PER_LEVEL = 50;
+
+// Multiplayer context variables
+let roomId = null;
+let playerId = null;
+let gameSocket = null;
 
 // --- Tetrominoes ---
 const TETROMINOES = {
@@ -563,8 +567,158 @@ if (gameBoardContainer) {
 // gameOverMessageElement.style.top = '50%';
 // gameOverMessageElement.style.left = '50%';
 // gameOverMessageElement.style.transform = 'translate(-50%, -50%)';
-// gameOverMessageElement.style.zIndex = '1000';
+// gameOverMessageElement.style.zIndex = '1000'; // Already handled by CSS
+
+// --- Game Initialization for Multiplayer ---
+document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    roomId = urlParams.get('room');
+    playerId = urlParams.get('player');
+
+    console.log(`Game page loaded. Room ID: ${roomId}, Player ID: ${playerId}`);
+
+    if (!roomId || !playerId) {
+        console.error('Room ID or Player ID missing from URL.');
+        const gameUiContainer = document.getElementById('tetris-99-layout');
+        if (gameUiContainer) {
+            gameUiContainer.innerHTML = '<p style="color: red; text-align: center; font-size: 20px; padding-top: 50px;">Error: Necessary game information (Room or Player ID) is missing. Please return to the main menu and try again.</p>';
+        }
+        // Disable game controls if they exist and are enabled by default
+        if(startButton) startButton.disabled = true;
+        if(pauseButton) pauseButton.disabled = true;
+        if(resetButton) resetButton.disabled = true;
+        return; // Stop further game initialization
+    }
+
+    // Initialize UI to default state before connection attempt
+    resetGameLogic(); // Resets board, score, level variables and updates UI
+    // Crucially, resetGameLogic() should NOT start any game intervals itself.
+
+    initializeGameWebSocket();
+});
+
+function initializeGameWebSocket() {
+    const wsGameProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    gameSocket = new WebSocket(wsGameProtocol + window.location.host);
+
+    gameSocket.onopen = () => {
+        console.log('Game WebSocket connection established.');
+        gameSocket.send(JSON.stringify({
+            type: 'JOIN_ROOM',
+            payload: { roomId: roomId, playerId: playerId }
+        }));
+        // Update UI: e.g., status bar "Connected to room..."
+        // For now, console log is primary feedback.
+    };
+
+    gameSocket.onmessage = (event) => {
+        try {
+            const message = JSON.parse(event.data);
+            console.log('Message from game server:', message);
+
+            switch (message.type) {
+                case 'ROOM_JOIN_CONFIRMATION':
+                    console.log(`Successfully joined room: ${message.payload.roomId}. Players now in room: ${message.payload.playersInRoom.join(', ')}. Your ID: ${message.payload.yourPlayerId}`);
+                    // Update UI (e.g., display player list, room ID)
+                    // Can also confirm if message.payload.yourPlayerId matches our playerId
+                    if(playerId !== message.payload.yourPlayerId) {
+                        console.warn("Player ID mismatch from server confirmation!");
+                    }
+                    // Display a waiting message or enable a "Ready" button
+                    const gameBoardContainer = document.getElementById('game-board-container');
+                    if (gameBoardContainer && !document.getElementById('waiting-message')) {
+                        const waitingMsg = document.createElement('p');
+                        waitingMsg.id = 'waiting-message';
+                        waitingMsg.textContent = 'Waiting for game to start...';
+                        waitingMsg.style.color = 'white';
+                        waitingMsg.style.textAlign = 'center';
+                        gameBoardContainer.insertBefore(waitingMsg, gameOverMessageElement); // Insert before game over message
+                    }
+
+                    break;
+                case 'GAME_START':
+                    console.log('Server initiated GAME_START. Starting local game.', message.payload);
+                    // Remove waiting message
+                    const waitingMessageElement = document.getElementById('waiting-message');
+                    if (waitingMessageElement) waitingMessageElement.remove();
+
+                    // Ensure game is reset to a clean state before starting.
+                    // resetGameLogic() was called at init, but can call again if needed,
+                    // or ensure startGame() handles fresh setup.
+                    // Current resetGameLogic should be fine.
+                    startGame(); // This will initialize board, pieces, and start the gameInterval.
+                    if(pauseButton) pauseButton.disabled = false; // Enable pause if it was disabled
+                    if(resetButton) resetButton.disabled = false; // Enable reset (though its behavior might need thought in MP)
+                    break;
+                case 'GAME_STATE_UPDATE': // Placeholder for future state sync
+                    console.log('Received game state update:', message.payload);
+                    // This is where you'd handle opponent board rendering, etc.
+                    break;
+                case 'PLAYER_LEFT_ROOM': // Placeholder
+                     console.log(`Player ${message.payload.playerId} left the room.`);
+                     // Update UI, perhaps show a message
+                    break;
+                case 'ERROR':
+                    console.error(`Error from server: ${message.payload.message || message.payload}`);
+                    // Display error on UI
+                    const errDisplay = document.getElementById('game-board-container') || document.body;
+                    const errMsgP = document.createElement('p');
+                    errMsgP.textContent = `Server Error: ${message.payload.message || message.payload}`;
+                    errMsgP.style.color = "red";
+                    errDisplay.appendChild(errMsgP);
+                    break;
+                default:
+                    console.warn(`Unknown message type from server: ${message.type}`);
+            }
+        } catch (error) {
+            console.error('Error parsing message from game server:', event.data, error);
+        }
+    };
+
+    gameSocket.onclose = () => {
+        console.log('Game WebSocket connection closed.');
+        if (!gameOver) {
+            // setGameOver(); // Or a specific "disconnected" game over state
+            console.warn("Game WebSocket closed before local game over.");
+            // Display a message indicating disconnection.
+        }
+        const gameUiContainer = document.getElementById('tetris-99-layout') || document.body;
+        const existingDisconnectMsg = document.getElementById('disconnect-message');
+        if (!existingDisconnectMsg) { // Prevent multiple messages
+            const disconnectMsg = document.createElement('p');
+            disconnectMsg.id = 'disconnect-message';
+            disconnectMsg.textContent = 'Disconnected from game server. The game may no longer be active.';
+            disconnectMsg.style.color = 'orange';
+            disconnectMsg.style.textAlign = 'center';
+            disconnectMsg.style.padding = '20px';
+            gameUiContainer.appendChild(disconnectMsg);
+        }
+        // Disable game interactions
+        if(startButton) startButton.disabled = true;
+        if(pauseButton) pauseButton.disabled = true;
+        // resetButton might still be useful to reset the local view, or navigate home.
+    };
+
+    gameSocket.onerror = (error) => {
+        console.error('Game WebSocket error:', error);
+        const gameUiContainer = document.getElementById('tetris-99-layout') || document.body;
+        const existingErrorMsg = document.getElementById('ws-error-message');
+        if (!existingErrorMsg) {
+            const errorMsg = document.createElement('p');
+            errorMsg.id = 'ws-error-message';
+            errorMsg.textContent = 'Error connecting to game server. Please try again later.';
+            errorMsg.style.color = 'red';
+            gameUiContainer.appendChild(errorMsg);
+        }
+         if(startButton) startButton.disabled = true;
+         if(pauseButton) pauseButton.disabled = true;
+    };
+}
 
 
-resetGameLogic(); // Call the logic part for initial setup
-console.log("Game initialized. Press Start. Use arrow keys to move/rotate, 'p' to pause.");
+// The initial call to resetGameLogic() at the end of the script is removed.
+// It's now called within the DOMContentLoaded listener before WebSocket initialization.
+// This ensures the game state and UI are reset without auto-starting the game loop.
+console.log("Game script loaded. Waiting for DOMContentLoaded to initialize multiplayer.");
+// Old: resetGameLogic(); // Call the logic part for initial setup
+// Old: console.log("Game initialized. Press Start. Use arrow keys to move/rotate, 'p' to pause.");
