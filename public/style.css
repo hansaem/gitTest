@@ -30,33 +30,29 @@ body {
   background-color: #2a2a4e; /* Darker than game board bg */
   border: 1px solid #4f4f7e;
   border-radius: 3px;
+  /* Default styling for non-active placeholders, if any are left without specific IDs */
+  /* If all .opponent-board-placeholder divs are meant to be potential boards, move grid styles here. */
+  /* For now, assuming non-ID'd ones are just visual fillers with this smaller size. */
 }
 
-/* Styling for the specific opponent board container */
-#opponent-1-board-container {
-  width: 102px; /* 10 columns * (10px block + 0px border effectively, but needs to account for grid gap or borders) */
-  height: 202px; /* 20 rows * (10px block + 0px border) */
-  /* Let's use 10px blocks for opponent. Border is 1px on each side. Grid gap can also be used. */
-  /* Width: 10 * 10px = 100px. Height: 20 * 10px = 200px. Add border: */
-  /* If block includes border: width: 10 * 10 = 100px. */
-  /* If grid cells are 10x10, and blocks are placed in them. */
-
-  /* Let's define block size and then container size based on that. */
-  /* Opponent block size: 8px content + 1px border on each side = 10px total width/height */
-  /* So, container: 10 cols * 10px/col = 100px width, 20 rows * 10px/row = 200px height */
-  /* Plus container border: 1px on each side. */
-  width: 102px; /* 10 cols * 10px/block = 100px + 2px border */
-  height: 202px; /* 20 rows * 10px/block = 200px + 2px border */
-
+/* Styling for the specific, active opponent board containers */
+#opponent-0-board-container,
+#opponent-1-board-container,
+#opponent-2-board-container,
+#opponent-3-board-container {
+  width: 102px; /* 10 cols * 10px/block = 100px + 2px border for the container */
+  height: 202px; /* 20 rows * 10px/block = 200px + 2px border for the container */
   display: grid;
   grid-template-columns: repeat(10, 10px); /* 10 columns, each 10px wide */
   grid-template-rows: repeat(20, 10px);    /* 20 rows, each 10px high */
-
-  background-color: #0f0f1a; /* Similar to main game board's dark bg */
-  border: 1px solid #4f4f7e; /* Subdued border compared to main board */
-  border-radius: 3px; /* Consistent with other placeholders */
-  /* Override general .opponent-board-placeholder if it has fixed sizing that conflicts */
-  /* The class .opponent-board-placeholder might just provide default bg/border now */
+  background-color: #0f0f1a; /* Dark background for the grid area */
+  border: 1px solid #6a6aac;  /* Slightly more prominent border for active opponent boards */
+  border-radius: 3px;
+  margin-bottom: 10px; /* Spacing between stacked opponent boards */
+  /* This will override the simpler .opponent-board-placeholder if needed,
+     or they can be mutually exclusive (remove class if ID'd).
+     Keeping class is fine if base styles (like margin/padding from .opponent-area) are useful.
+     The specific dimensions here will take precedence for ID'd elements. */
 }
 
 .opponent-block {

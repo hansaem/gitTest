@@ -81,8 +81,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             break;
                         case 'ERROR':
                             statusText = `Error from server: ${message.payload}`;
-                            startGameButtonMain.disabled = false; // Re-enable on error
+                            startGameButtonMain.disabled = false;
                             startGameButtonMain.textContent = 'Start Game';
+                            socket = null; // Clear socket on server error too
+                            break;
+                        case 'MATCH_FAILED':
+                            statusText = `Matchmaking failed: ${message.payload.message}. Please try again.`;
+                            startGameButtonMain.disabled = false;
+                            startGameButtonMain.textContent = 'Start Game';
+                            socket = null; // Clear socket
                             break;
                         default:
                             console.warn(`Unknown message type received: ${message.type}`);

@@ -28,7 +28,8 @@ let matchmakingQueue = []; // Array of { id: clientId, ws: ws, joinedAt: Date.no
 const activeRooms = new Map(); // To store active game rooms: roomId -> roomObject
 
 // Matchmaking settings
-const MATCH_MAX_PLAYERS = 2;
+const MATCH_MAX_PLAYERS = 5; // Updated
+const MIN_PLAYERS_TO_START = 2; // New
 const MATCH_MAX_WAIT_SECONDS = 10;
 let matchmakingTimer = null;
 
@@ -57,110 +58,91 @@ function broadcastQueueStatus() {
     console.log(`Broadcasted queue status: ${matchmakingQueue.length} players.`);
 }
 
+function formMatchWithPlayers(playersArray) {
+    if (playersArray.length === 0) return;
+    const roomId = 'room-' + generateUniqueId();
+    console.log(`Forming match for room ${roomId} with players: ${playersArray.map(p => p.id).join(', ')}`);
+
+    const newRoom = {
+        id: roomId,
+        players: playersArray.map(p => ({ id: p.id, ws: p.ws, status: 'connected', currentBoard: null })),
+        createdAt: Date.now(),
+        gameStarted: false,
+        // gameState: {}
+    };
+    activeRooms.set(roomId, newRoom);
+    console.log(`Room ${roomId} created and stored. Active rooms: ${activeRooms.size}`);
+
+    playersArray.forEach(player => {
+        if (player.ws && player.ws.readyState === WebSocket.OPEN) {
+            player.ws.send(JSON.stringify({
+                type: 'MATCH_FOUND',
+                payload: {
+                    roomId: roomId,
+                    players: playersArray.map(p => p.id),
+                    yourPlayerId: player.id
+                    // opponentId logic removed as it's less relevant for >2 players or client can determine
+                }
+            }));
+        }
+    });
+    broadcastQueueStatus(); // Update remaining clients about queue changes
+}
 
 function tryMatchmake() {
+    if (matchmakingTimer) { // Clear any existing timer before re-evaluating
+        clearTimeout(matchmakingTimer);
+        matchmakingTimer = null;
+    }
+
     if (matchmakingQueue.length === 0) {
-        if (matchmakingTimer) {
-            clearTimeout(matchmakingTimer);
-            matchmakingTimer = null;
-            console.log("Matchmaking queue empty, timer cleared.");
-        }
+        console.log('Matchmaking queue is empty. No timer needed.');
         return;
     }
 
-    const firstPlayerInQueue = matchmakingQueue[0];
-    const timeWaited = (Date.now() - firstPlayerInQueue.joinedAt) / 1000;
-    const canMakeInstantMatch = matchmakingQueue.length >= MATCH_MAX_PLAYERS;
-    const waitedLongEnough = timeWaited >= MATCH_MAX_WAIT_SECONDS;
+    // Condition 1: Max players reached
+    if (matchmakingQueue.length >= MATCH_MAX_PLAYERS) {
+        console.log(`Max players (${MATCH_MAX_PLAYERS}) reached. Forming match immediately.`);
+        const playersToMatch = matchmakingQueue.splice(0, MATCH_MAX_PLAYERS);
+        formMatchWithPlayers(playersToMatch);
+        // If queue still has players (e.g. more than MATCH_MAX_PLAYERS joined simultaneously), try to matchmake them
+        if (matchmakingQueue.length > 0) tryMatchmake();
+        return;
+    }
 
-    console.log(`TryMatchmake: Queue size: ${matchmakingQueue.length}, First player waited: ${timeWaited.toFixed(1)}s. Timer: ${matchmakingTimer ? 'active' : 'inactive'}`);
+    // Condition 2: Wait for timer if not max players yet
+    const oldestPlayer = matchmakingQueue[0];
+    const timeWaited = (Date.now() - oldestPlayer.joinedAt) / 1000;
+    const remainingWaitTime = MATCH_MAX_WAIT_SECONDS - timeWaited;
 
-
-    if (canMakeInstantMatch || waitedLongEnough) {
-        const playersToMatchCount = Math.min(matchmakingQueue.length, MATCH_MAX_PLAYERS);
-        // For a 1v1 game, we need at least 2. If it's battle royale, then this logic changes slightly.
-        // Assuming we want to match MATCH_MAX_PLAYERS if possible.
-        // If waitedLongEnough, even a smaller group than MATCH_MAX_PLAYERS might be matched if MATCH_MAX_PLAYERS > 2
-        // For now, strict MATCH_MAX_PLAYERS or timeout for the first player with any available players (min 2).
-
-        if (matchmakingQueue.length < 2 && waitedLongEnough && MATCH_MAX_PLAYERS >=2 ) { // Not enough players even after waiting
-             console.log(`Player ${firstPlayerInQueue.id} timed out, but not enough players to form a match (need at least 2). Resetting their timer by re-adding.`);
-             // To prevent spamming this log, only re-add if timer logic is sophisticated.
-             // For now, just let them wait more until another joins or timer restarts.
-             if (matchmakingTimer) clearTimeout(matchmakingTimer); // Clear existing timer
-             matchmakingTimer = setTimeout(() => { tryMatchmake(); }, (MATCH_MAX_WAIT_SECONDS * 1000 +100)); // Restart timer
-             return;
-        }
-
-
-        // Take the exact number of players for a match, or all if fewer than MAX but waited long enough (and >=2)
-        const actualPlayersToMatch = (waitedLongEnough && matchmakingQueue.length >= 2) ?
-                                     Math.min(matchmakingQueue.length, MATCH_MAX_PLAYERS) :
-                                     (canMakeInstantMatch ? MATCH_MAX_PLAYERS : 0);
-
-        if (actualPlayersToMatch < 2 && MATCH_MAX_PLAYERS >=2) { // Ensure we have at least 2 players for a match
-            if (!matchmakingTimer) { // Only start a new timer if one isn't already running
-                matchmakingTimer = setTimeout(() => { tryMatchmake(); }, (MATCH_MAX_WAIT_SECONDS * 1000 +100));
-            }
-            return;
-        }
-
-
-        const playersToMatch = matchmakingQueue.splice(0, actualPlayersToMatch);
-
-        if (playersToMatch.length >= 2 || (MATCH_MAX_PLAYERS === 1 && playersToMatch.length === 1)) {
-            const roomId = 'room-' + generateUniqueId();
-            console.log(`Forming match for room ${roomId} with players: ${playersToMatch.map(p => p.id).join(', ')}`);
-
-            const newRoom = {
-                id: roomId,
-                players: playersToMatch.map(p => ({ id: p.id, ws: p.ws, status: 'connected' })),
-                createdAt: Date.now(),
-                gameStarted: false,
-                gameState: {} // Placeholder for actual game state
-            };
-            activeRooms.set(roomId, newRoom);
-            console.log(`Room ${roomId} created and stored. Active rooms: ${activeRooms.size}`);
-
-            playersToMatch.forEach(player => {
-                if (player.ws.readyState === WebSocket.OPEN) {
-                    player.ws.send(JSON.stringify({
-                        type: 'MATCH_FOUND',
-                        payload: {
-                            roomId: roomId,
-                            players: newRoom.players.map(pInfo => pInfo.id), // Send IDs of all players in the room
-                            yourPlayerId: player.id,
-                            opponentId: newRoom.players.length === 2 ? newRoom.players.find(pInfo => pInfo.id !== player.id)?.id : null
-                        }
-                    }));
+    if (remainingWaitTime <= 0) { // Timer has effectively expired for the oldest player
+        console.log('Matchmaking timer expired for the oldest player.');
+        if (matchmakingQueue.length >= MIN_PLAYERS_TO_START) {
+            console.log(`Forming match with ${matchmakingQueue.length} players after timer.`);
+            // Take all current players in queue, up to MATCH_MAX_PLAYERS
+            const playersToMatch = matchmakingQueue.splice(0, Math.min(matchmakingQueue.length, MATCH_MAX_PLAYERS));
+            formMatchWithPlayers(playersToMatch);
+        } else {
+            console.log(`Not enough players (${matchmakingQueue.length}, need ${MIN_PLAYERS_TO_START}) to start after timer. Sending MATCH_FAILED.`);
+            matchmakingQueue.forEach(player => {
+                if (player.ws && player.ws.readyState === WebSocket.OPEN) {
+                    player.ws.send(JSON.stringify({ type: 'MATCH_FAILED', payload: { message: 'Not enough players joined in time to form a match.' } }));
                 }
             });
-            broadcastQueueStatus(); // Queue size has changed
-        } else if (playersToMatch.length > 0) { // Not enough for a match, put them back
-             matchmakingQueue.unshift(...playersToMatch); // Add them back to the front
-             console.log("Players put back in queue as not enough for a full match yet.");
+            matchmakingQueue.length = 0; // Clear the queue
         }
-
-
-        if (matchmakingTimer) {
-            clearTimeout(matchmakingTimer);
-            matchmakingTimer = null;
-        }
-        // If queue still has players, recursively call or set new timer
-        if (matchmakingQueue.length > 0) {
-            tryMatchmake(); // This will evaluate and set a new timer if needed
-        }
-
-    } else if (!matchmakingTimer && matchmakingQueue.length > 0) {
-        const timeToWait = (MATCH_MAX_WAIT_SECONDS - timeWaited) * 1000 + 100; // Add buffer
-        console.log(`Queue has players, but not enough or not waited long enough. Starting matchmaking timer for ${timeToWait / 1000}s`);
+        // If queue somehow still has players (e.g., if splice logic changes or more join right now), try again
+        if (matchmakingQueue.length > 0) tryMatchmake();
+    } else {
+        // Start a new timer if conditions for immediate match or expired timer are not met
+        console.log(`Queue has ${matchmakingQueue.length} players. Setting timer for ${remainingWaitTime.toFixed(1)}s for player ${oldestPlayer.id}.`);
         matchmakingTimer = setTimeout(() => {
-            matchmakingTimer = null;
-            tryMatchmake();
-        }, timeToWait);
+            console.log('Matchmaking setTimeout callback triggered.');
+            matchmakingTimer = null; // Clear the timer variable before calling tryMatchmake
+            tryMatchmake(); // Re-evaluate conditions
+        }, remainingWaitTime * 1000 + 100); // Add a small buffer (100ms) to ensure wait time is met
     }
 }
-
 
 wss.on('connection', (ws) => {
     const clientId = generateUniqueId();
