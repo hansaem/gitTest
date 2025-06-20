@@ -1,45 +1,237 @@
 body {
-  font-family: sans-serif;
+  font-family: 'Roboto', sans-serif;
   display: flex;
-  align-items: center;
+  align-items: flex-start; /* Align to top for Tetris 99 layout */
   justify-content: center;
-  height: 100vh;
+  min-height: 100vh;
   margin: 0;
-  background-color: #f0f0f0;
+  background-color: #1a1a2e; /* Dark blue/purple */
+  color: #e0e0e0; /* Light gray for text */
+  padding-top: 20px; /* Add some padding at the top */
+}
+
+#tetris-99-layout {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 15px; /* Space between main column and sidebars */
+}
+
+.opponent-area {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 50px; /* Align roughly with top of main game board */
+}
+
+.opponent-board-placeholder {
+  width: 50px; /* Small width */
+  height: 100px; /* Small height */
+  background-color: #2a2a4e; /* Darker than game board bg */
+  border: 1px solid #4f4f7e;
+  border-radius: 3px;
+}
+
+#main-game-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+
+#stats-area {
+  display: flex;
+  justify-content: space-around; /* Space out score, level, KOs */
+  width: 100%;
+  padding: 10px;
+  background-color: #2a2a4e;
+  border-radius: 5px;
+  border: 1px solid #4f4f7e;
+  box-sizing: border-box;
+}
+
+.stats-item, #score {
+  font-size: 1em; /* Adjusted for new layout */
+  color: #e0e0e0;
+  padding: 5px 10px;
+  background-color: #1a1a2e;
+  border-radius: 3px;
+}
+
+
+#game-board-container {
+    position: relative; /* For game over message positioning */
 }
 
 #game-board {
   display: grid;
-  grid-template-columns: repeat(10, 30px);
-  grid-template-rows: repeat(20, 30px);
-  border: 1px solid #ccc;
-  background-color: #fff;
+  grid-template-columns: repeat(10, 28px); /* Slightly smaller blocks */
+  grid-template-rows: repeat(20, 28px);
+  border: 2px solid #8c8cbf; /* Neon-like border */
+  background-color: #0f0f1a; /* Very dark, almost black */
+  box-shadow: 0 0 15px rgba(140, 140, 191, 0.5); /* Outer glow */
+  position: relative; /* Ensure it's a positioning context for blocks */
 }
 
-#score {
-  margin-left: 20px;
-  font-size: 24px;
+#right-sidebar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  width: 150px; /* Fixed width for the right sidebar */
+}
+
+#next-piece-queue-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background-color: #2a2a4e;
+  border-radius: 5px;
+  border: 1px solid #4f4f7e;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.next-piece-label {
+  font-size: 1.1em;
+  font-weight: bold;
+  color: #e0e0e0;
+  margin-bottom: 5px;
 }
 
 #next-piece {
-  margin-left: 20px;
-  width: 120px; /* 4 columns * 30px */
-  height: 120px; /* 4 rows * 30px */
-  border: 1px solid #ccc;
-  background-color: #fff;
-  display: grid;
-  grid-template-columns: repeat(4, 30px);
-  grid-template-rows: repeat(4, 30px);
+  /* width: 112px; 4 blocks * 28px */
+  /* height: 112px; 4 blocks * 28px */
+  /* Script calculates size, but container can enforce a max */
+  max-width: 112px;
+  max-height: 112px;
+  border: 1px solid #4f4f7e;
+  background-color: #0f0f1a;
+  display: grid; /* Kept for script compatibility */
+  grid-template-columns: repeat(4, 28px); /* Match block size */
+  grid-template-rows: repeat(4, 28px);   /* Match block size */
+  margin-bottom: 5px; /* Space before smaller placeholders */
+}
+
+.next-piece-placeholder-small {
+  width: 56px; /* 2 blocks wide */
+  height: 56px; /* 2 blocks high */
+  background-color: #0f0f1a;
+  border: 1px dashed #4f4f7e; /* Dashed to indicate placeholder */
+  border-radius: 3px;
+}
+
+
+#attacker-info {
+  width: 100%;
+  text-align: center;
+  padding: 10px;
+  background-color: #2a2a4e;
+  border-radius: 5px;
+  border: 1px solid #4f4f7e;
+  box-sizing: border-box;
+}
+
+
+#game-controls {
+    display: flex;
+    justify-content: space-between;
+    width: 100%; /* Make controls take full width of main column */
 }
 
 button {
-  margin-left: 20px;
-  padding: 10px 20px;
-  font-size: 16px;
+  padding: 8px 15px;
+  font-size: 0.9em;
+  font-family: 'Roboto', sans-serif;
+  font-weight: bold;
+  color: #e0e0e0;
+  background-color: #4f4f7e; /* Button color */
+  border: 1px solid #8c8cbf; /* Button border */
+  border-radius: 5px;
   cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
+button:hover {
+  background-color: #6a6aac; /* Lighter on hover */
+}
+
+button:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+
 .block {
-  border: 1px solid #eee;
+  /* border: 1px solid #333; Slightly darker border for blocks */
   box-sizing: border-box;
+  border-radius: 1px; /* Slightly rounded blocks */
+  /* Adding a subtle inner glow or highlight could be complex per block,
+     but a general brightness can be achieved by piece colors.
+     The script sets backgroundColor directly. We can add a general rule. */
+  opacity: 0.95; /* Slight transparency */
+  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.1); /* Subtle inset highlight */
+}
+
+/* Styles for main.html - Ensure they are distinct and don't clash */
+/* The body style is shared, so main-menu-container needs to override if needed */
+.main-menu-container {
+    /* Re-center content for main menu page if it uses the same body styles */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh; /* Ensure it takes full viewport height */
+    text-align: center;
+    /* background-color: #e0e0e0; */ /* Already set by body, or override if needed */
+    /* The new body background is dark, so text color for main menu needs to be light */
+    color: #e0e0e0;
+}
+
+.main-menu-container h1 {
+    font-size: 3em;
+    /* color: #333; */ /* Old color, needs to be light now */
+    color: #ffffff; /* White or light gray for visibility on dark bg */
+    margin-bottom: 40px;
+}
+
+#start-game-main {
+    padding: 15px 30px;
+    font-size: 20px;
+    cursor: pointer;
+    background-color: #00bfff; /* Deep Sky Blue - example */
+    color: white;
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Adjusted shadow for dark theme */
+    transition: background-color 0.3s ease, transform 0.1s ease;
+}
+
+#start-game-main:hover {
+    background-color: #009acd; /* Darker shade of Deep Sky Blue */
+}
+
+#start-game-main:active {
+    transform: translateY(2px);
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Game Over Message Styling from script.js - ensure it fits the new theme */
+#game-over-message {
+    position: absolute;
+    color: #ff4136; /* Bright Red */
+    font-size: 2.5em;
+    font-weight: bold;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    text-shadow: 0 0 10px rgba(255, 65, 54, 0.7);
+    background-color: rgba(15, 15, 26, 0.8); /* Semi-transparent dark bg */
+    padding: 20px;
+    border-radius: 10px;
+    border: 2px solid #ff4136;
 }

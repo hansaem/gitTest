@@ -3,14 +3,59 @@
 <head>
   <title>Tetris</title>
   <link rel="stylesheet" type="text/css" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div id="game-board"></div>
-  <div id="score">Score: 0</div>
-  <div id="next-piece"></div>
-  <button id="start-button">Start</button>
-  <button id="pause-button">Pause</button>
-  <button id="reset-button">Reset</button>
+  <div id="tetris-99-layout">
+    <div id="opponent-area-left" class="opponent-area">
+      <!-- 5 Small placeholder opponent boards -->
+      <div class="opponent-board-placeholder"></div>
+      <div class="opponent-board-placeholder"></div>
+      <div class="opponent-board-placeholder"></div>
+      <div class="opponent-board-placeholder"></div>
+      <div class="opponent-board-placeholder"></div>
+    </div>
+
+    <div id="main-game-column">
+      <div id="stats-area">
+        <div id="score">Score: 0</div>
+        <div id="level-display" class="stats-item">Level: 1</div> <!-- Placeholder -->
+        <div id="kos-display" class="stats-item">KOs: 0</div> <!-- Placeholder -->
+      </div>
+      <div id="game-board-container">
+        <div id="game-board"></div>
+         <!-- Game Over Message will be appended here by script.js -->
+      </div>
+      <div id="game-controls">
+        <button id="start-button">Start</button> <!-- Functionality might evolve to Restart -->
+        <button id="pause-button">Pause</button>
+        <button id="reset-button">Reset</button>
+      </div>
+    </div>
+
+    <div id="right-sidebar">
+      <div id="next-piece-queue-container">
+        <div class="next-piece-label">NEXT</div>
+        <div id="next-piece"></div> <!-- Existing element for the primary next piece -->
+        <!-- Placeholders for more upcoming pieces -->
+        <div class="next-piece-placeholder-small"></div>
+        <div class="next-piece-placeholder-small"></div>
+        <div class="next-piece-placeholder-small"></div>
+      </div>
+      <div id="attacker-info" class="stats-item"> <!-- Placeholder -->
+        Attacked by: None
+      </div>
+    </div>
+
+    <div id="opponent-area-right" class="opponent-area">
+      <!-- 5 Small placeholder opponent boards -->
+      <div class="opponent-board-placeholder"></div>
+      <div class="opponent-board-placeholder"></div>
+      <div class="opponent-board-placeholder"></div>
+      <div class="opponent-board-placeholder"></div>
+      <div class="opponent-board-placeholder"></div>
+    </div>
+  </div>
   <script src="script.js"></script>
 </body>
 </html>

@@ -4,13 +4,17 @@ const BLOCK_SIZE = 30;
 
 const gameBoard = document.getElementById('game-board');
 const scoreElement = document.getElementById('score');
+const levelDisplayElement = document.getElementById('level-display'); // Added
+const kosDisplayElement = document.getElementById('kos-display');     // Added
+// const attackerInfoElement = document.getElementById('attacker-info'); // Optional, not used yet
+
 const nextPieceElement = document.getElementById('next-piece');
 const startButton = document.getElementById('start-button');
 const pauseButton = document.getElementById('pause-button');
 const resetButton = document.getElementById('reset-button');
-const gameOverMessageElement = document.createElement('div'); // For displaying game over
+const gameOverMessageElement = document.createElement('div');
 gameOverMessageElement.id = 'game-over-message';
-gameOverMessageElement.style.display = 'none'; // Hidden by default
+gameOverMessageElement.style.display = 'none';
 gameOverMessageElement.textContent = 'GAME OVER!';
 
 
@@ -18,9 +22,17 @@ let board = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
 let currentPiece = null;
 let score = 0;
 let nextPiece = null;
-let isPaused = false; // General pause state
-let gameOver = false; // Specific game over state
+let isPaused = false;
+let gameOver = false;
 let gameInterval = null;
+
+// Game state variables for stats and progression
+let currentLevel = 1;
+let totalLinesCleared = 0;
+let kos = 0; // Placeholder for KOs display
+const LINES_PER_LEVEL = 5; // Lines needed to clear to level up
+const INITIAL_GAME_SPEED = 1000; // Milliseconds for the game loop interval
+const SPEED_INCREMENT_PER_LEVEL = 50; // Reduce interval by this much per level
 
 // --- Tetrominoes ---
 const TETROMINOES = {
@@ -175,27 +187,50 @@ function drawNextPieceDisplay() {
 }
 
 
-function updateScore() {
+function updateUIDisplays() {
   scoreElement.textContent = `Score: ${score}`;
+  levelDisplayElement.textContent = `Level: ${currentLevel}`;
+  kosDisplayElement.textContent = `KOs: ${kos}`;
+  // if (attackerInfoElement) attackerInfoElement.textContent = 'Attacked by: None'; // Example
 }
 
-function resetGame() {
+function resetGameLogic() { // Renamed to avoid conflict if resetGame is also an event handler name
   board = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
   score = 0;
-  updateScore();
+  currentLevel = 1;
+  totalLinesCleared = 0;
+  kos = 0;
+  // updateScore(); // Replaced by updateUIDisplays
+  updateUIDisplays();
+
   currentPiece = null;
-  nextPiece = getRandomPiece(); // Get the first "next" piece
-  spawnNewPiece(); // This will move nextPiece to currentPiece and get a new next
-  isPaused = true;
+  nextPiece = getRandomPiece();
+  // spawnNewPiece(); // This will be called by startGame or after piece locks typically
+  isPaused = true; // Start in a paused state often
+  gameOver = false;
+  gameOverMessageElement.style.display = 'none';
+
   if (gameInterval) {
     clearInterval(gameInterval);
     gameInterval = null;
   }
-  drawBoard(); // Draw empty board
-  if (currentPiece) drawPieceOnBoard(currentPiece); // Draw current piece if it exists
-  drawNextPieceDisplay();
-  console.log("Game reset");
+  drawBoard();
+  drawNextPieceDisplay(); // Show the initial next piece
 }
+
+
+function resetGame() {
+  console.log("Reset button clicked. Resetting game logic...");
+  resetGameLogic();
+  // currentPiece should be null here from resetGameLogic
+  // nextPiece is set. If we want to show the very first piece immediately:
+  // spawnNewPiece(); // This would move nextPiece to currentPiece
+  // drawCurrentState(); // And draw it.
+  // However, typically start button would handle the first spawn.
+  // For now, ensure board is clear and stats are reset.
+  console.log("Game reset, ready for Start.");
+}
+
 
 function spawnNewPiece() {
   currentPiece = nextPiece;
@@ -250,28 +285,41 @@ function lockPiece() {
 }
 
 function clearLines() {
-  let linesCleared = 0;
+  let linesClearedThisTurn = 0;
   for (let r = ROWS - 1; r >= 0; r--) {
     if (board[r].every(cell => cell !== 0)) {
-      // Line is full
-      linesCleared++;
-      board.splice(r, 1); // Remove the row
-      board.unshift(Array(COLS).fill(0)); // Add an empty row at the top
-      r++; // Re-check the current row index as lines shifted down
+      linesClearedThisTurn++;
+      board.splice(r, 1);
+      board.unshift(Array(COLS).fill(0));
+      r++;
     }
   }
 
-  if (linesCleared > 0) {
-    score += calculateScore(linesCleared);
-    updateScore();
-    console.log(`Cleared ${linesCleared} lines. Score: ${score}`);
+  if (linesClearedThisTurn > 0) {
+    score += calculateScore(linesClearedThisTurn);
+    totalLinesCleared += linesClearedThisTurn;
+    // updateScore(); // Replaced by updateUIDisplays call below
+
+    let newLevel = Math.floor(totalLinesCleared / LINES_PER_LEVEL) + 1;
+    if (newLevel > currentLevel) {
+      currentLevel = newLevel;
+      console.log(`Level up to: ${currentLevel}`);
+      if (!isPaused && !gameOver) { // Only adjust speed if game is active
+        let newSpeed = Math.max(100, INITIAL_GAME_SPEED - (SPEED_INCREMENT_PER_LEVEL * (currentLevel - 1)));
+        if (gameInterval) clearInterval(gameInterval); // Clear existing interval
+        gameInterval = setInterval(gameLoop, newSpeed);
+        console.log(`New game speed: ${newSpeed}`);
+      }
+    }
+    updateUIDisplays(); // Update score, level, etc. on screen
+    console.log(`Cleared ${linesClearedThisTurn} lines. Total lines: ${totalLinesCleared}. Score: ${score}. Level: ${currentLevel}`);
   }
 }
 
-function calculateScore(linesCleared) {
+function calculateScore(linesClearedThisTurn) {
     const lineScores = [0, 10, 30, 50, 100]; // Score for 0, 1, 2, 3, 4 lines
-    if (linesCleared >= lineScores.length) return lineScores[lineScores.length-1] * 2; // Max score x2 for >4 lines (unlikely)
-    return lineScores[linesCleared];
+    if (linesClearedThisTurn >= lineScores.length) return lineScores[lineScores.length-1] * 2;
+    return lineScores[linesClearedThisTurn];
 }
 
 
@@ -399,28 +447,35 @@ function startGame() {
     clearInterval(gameInterval);
   }
   // Hide game over message at start
-  gameOverMessageElement.style.display = 'none';
-  gameBoard.appendChild(gameOverMessageElement); // Add to a suitable place in DOM
+  gameOverMessageElement.style.display = 'none'; // Hide game over message
+  // gameBoard.appendChild(gameOverMessageElement); // Already added during initial setup
 
   gameOver = false;
-  isPaused = false; // Ensure game isn't paused from a previous game over state
-  board = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
-  score = 0;
-  updateScore();
-  nextPiece = getRandomPiece();
+  isPaused = false;
+  board = Array(ROWS).fill(null).map(() => Array(COLS).fill(0)); // Clear board
 
-  if (!spawnNewPiece()) {
-      console.error("Failed to spawn initial piece immediately after reset. This shouldn't happen.");
-      setGameOver(); // Should already be handled by spawnNewPiece
+  // Reset game state variables
+  score = 0;
+  currentLevel = 1;
+  totalLinesCleared = 0;
+  kos = 0;
+  updateUIDisplays(); // Update all UI elements
+
+  nextPiece = getRandomPiece(); // Get the first "next" piece
+  if (!spawnNewPiece()) { // Spawn the first piece (currentPiece = nextPiece, new nextPiece)
+      // Game over on start if piece can't spawn, spawnNewPiece handles setGameOver
       return;
   }
 
-  drawCurrentState();
+  drawCurrentState(); // Draw the board and the first piece
+
   if (gameInterval) clearInterval(gameInterval); // Clear any existing interval
   if (!gameOver) { // Only start interval if game is not over
-    gameInterval = setInterval(gameLoop, 1000);
+    gameInterval = setInterval(gameLoop, INITIAL_GAME_SPEED); // Use initial game speed
+    console.log("Game started with speed:", INITIAL_GAME_SPEED);
+  } else {
+    console.log("Game over flag is true, not starting game loop.");
   }
-  console.log("Game started");
 }
 
 function hardDrop() {
@@ -455,25 +510,10 @@ function setGameOver() {
 }
 
 
-function resetGame() {
-  board = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
-  score = 0;
-  updateScore();
-  currentPiece = null;
-  nextPiece = getRandomPiece();
-  isPaused = true; // Start in a "paused" state until Start is pressed
-  gameOver = false; // Reset game over state
-  gameOverMessageElement.style.display = 'none';
-
-  if (gameInterval) {
-    clearInterval(gameInterval);
-    gameInterval = null;
-  }
-  // spawnNewPiece(); // Don't spawn piece until game starts
-  drawBoard(); // Draw empty board
-  drawNextPieceDisplay(); // Show the first next piece
-  console.log("Game reset, ready to start.");
-}
+// function resetGame() has been updated to resetGameLogic and a new resetGame for event handling
+// Ensure the event listener calls the correct one if names changed.
+// The `resetGame` function above the `spawnNewPiece` is now the event handler.
+// The actual logic is in `resetGameLogic`. This is fine.
 
 
 function pauseGame() {
@@ -507,18 +547,24 @@ resetButton.addEventListener('click', resetGame);
 
 
 // --- Initial Setup ---
-// Add game over message element to the DOM, typically inside the game container or body
-document.body.appendChild(gameOverMessageElement); // Or a more specific container
-// Style the game over message
-gameOverMessageElement.style.position = 'absolute';
-gameOverMessageElement.style.color = 'red';
-gameOverMessageElement.style.fontSize = '2em';
-gameOverMessageElement.style.fontWeight = 'bold';
-gameOverMessageElement.style.top = '50%';
-gameOverMessageElement.style.left = '50%';
-gameOverMessageElement.style.transform = 'translate(-50%, -50%)';
-gameOverMessageElement.style.zIndex = '1000'; // Ensure it's on top
+// Add game over message element to the game board container for better positioning
+const gameBoardContainer = document.getElementById('game-board-container');
+if (gameBoardContainer) {
+    gameBoardContainer.appendChild(gameOverMessageElement);
+} else {
+    // Fallback if the specific container isn't found (shouldn't happen with new HTML)
+    document.body.appendChild(gameOverMessageElement);
+}
+// Style the game over message (already defined in style.css, but can be overridden or ensured here)
+// gameOverMessageElement.style.position = 'absolute'; // These are now primarily handled by CSS
+// gameOverMessageElement.style.color = 'red';
+// gameOverMessageElement.style.fontSize = '2em';
+// gameOverMessageElement.style.fontWeight = 'bold';
+// gameOverMessageElement.style.top = '50%';
+// gameOverMessageElement.style.left = '50%';
+// gameOverMessageElement.style.transform = 'translate(-50%, -50%)';
+// gameOverMessageElement.style.zIndex = '1000';
 
 
-resetGame(); // Set up initial state (board, nextPiece, draws board and next piece)
+resetGameLogic(); // Call the logic part for initial setup
 console.log("Game initialized. Press Start. Use arrow keys to move/rotate, 'p' to pause.");
