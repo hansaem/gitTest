@@ -629,26 +629,28 @@ function initializeGameWebSocket() {
                     if (gameBoardContainer && !document.getElementById('waiting-message')) {
                         const waitingMsg = document.createElement('p');
                         waitingMsg.id = 'waiting-message';
-                        waitingMsg.textContent = 'Waiting for game to start...';
+                        waitingMsg.textContent = 'Successfully joined room. Waiting for game to start...';
                         waitingMsg.style.color = 'white';
                         waitingMsg.style.textAlign = 'center';
-                        gameBoardContainer.insertBefore(waitingMsg, gameOverMessageElement); // Insert before game over message
+                        waitingMsg.style.position = 'absolute'; // Overlay style
+                        waitingMsg.style.top = '40%';
+                        waitingMsg.style.left = '50%';
+                        waitingMsg.style.transform = 'translate(-50%, -50%)';
+                        waitingMsg.style.fontSize = '20px';
+                        gameBoardContainer.appendChild(waitingMsg); // Append to container
                     }
-
+                    // Ensure controls are disabled while waiting
+                    if(pauseButton) pauseButton.disabled = true;
+                    if(resetButton) resetButton.disabled = true;
+                    if(startButton) startButton.disabled = true; // Game page start button
                     break;
-                case 'GAME_START':
-                    console.log('Server initiated GAME_START. Starting local game.', message.payload);
-                    // Remove waiting message
-                    const waitingMessageElement = document.getElementById('waiting-message');
-                    if (waitingMessageElement) waitingMessageElement.remove();
 
-                    // Ensure game is reset to a clean state before starting.
-                    // resetGameLogic() was called at init, but can call again if needed,
-                    // or ensure startGame() handles fresh setup.
-                    // Current resetGameLogic should be fine.
-                    startGame(); // This will initialize board, pieces, and start the gameInterval.
-                    if(pauseButton) pauseButton.disabled = false; // Enable pause if it was disabled
-                    if(resetButton) resetButton.disabled = false; // Enable reset (though its behavior might need thought in MP)
+                case 'GAME_START':
+                    console.log('Server initiated GAME_START. Starting countdown...', message.payload);
+                    const waitingMsgElement = document.getElementById('waiting-message');
+                    if (waitingMsgElement) waitingMsgElement.remove();
+
+                    initiateGameCountdown();
                     break;
                 case 'GAME_STATE_UPDATE': // Placeholder for future state sync
                     console.log('Received game state update:', message.payload);
@@ -715,10 +717,66 @@ function initializeGameWebSocket() {
     };
 }
 
+function initiateGameCountdown() {
+    const gameBoardContainer = document.getElementById('game-board-container');
+    if (!gameBoardContainer) {
+        console.error('Game board container not found for countdown. Starting game immediately.');
+        resetGameLogic();
+        startGame();
+        if(pauseButton) pauseButton.disabled = false;
+        if(resetButton) resetButton.disabled = false;
+        return;
+    }
+
+    // Clear other messages like "Waiting..." if they are not structured to be overlaid
+    // For instance, if waiting message was directly in gameBoardContainer:
+    // gameBoardContainer.innerHTML = ''; // Be cautious if game-board is inside this and shouldn't be cleared
+
+    const countdownElement = document.createElement('div');
+    countdownElement.id = 'countdown-display'; // Assign an ID for potential styling via CSS
+    countdownElement.style.position = 'absolute';
+    countdownElement.style.top = '50%';
+    countdownElement.style.left = '50%';
+    countdownElement.style.transform = 'translate(-50%, -50%)';
+    countdownElement.style.fontSize = '72px'; // Larger countdown text
+    countdownElement.style.color = '#FFF';
+    countdownElement.style.fontWeight = 'bold';
+    countdownElement.style.zIndex = '20'; // Ensure it's above game board but below other UI if needed
+    gameBoardContainer.appendChild(countdownElement);
+
+    let count = 5;
+    countdownElement.textContent = count;
+
+    const intervalId = setInterval(() => {
+        count--;
+        if (count > 0) {
+            countdownElement.textContent = count;
+        } else if (count === 0) {
+            countdownElement.textContent = 'GO!';
+        } else {
+            clearInterval(intervalId);
+            if (countdownElement.parentNode) { // Check if still part of DOM
+                countdownElement.parentNode.removeChild(countdownElement);
+            }
+
+            // Ensure game board is clear for Tetris blocks (if it was affected)
+            // gameBoard.innerHTML = ''; // This clears the grid cells if blocks are direct children.
+                                     // Current drawBoard clears it anyway.
+
+            resetGameLogic(); // Prepare board, score, level
+            startGame();    // Initialize pieces and start game loop
+
+            // Enable controls AFTER game starts
+            if(pauseButton) pauseButton.disabled = false;
+            if(resetButton) resetButton.disabled = false;
+            // startButton on game page should remain disabled in MP context
+            if(startButton) startButton.disabled = true;
+        }
+    }, 1000);
+}
+
 
 // The initial call to resetGameLogic() at the end of the script is removed.
 // It's now called within the DOMContentLoaded listener before WebSocket initialization.
 // This ensures the game state and UI are reset without auto-starting the game loop.
 console.log("Game script loaded. Waiting for DOMContentLoaded to initialize multiplayer.");
-// Old: resetGameLogic(); // Call the logic part for initial setup
-// Old: console.log("Game initialized. Press Start. Use arrow keys to move/rotate, 'p' to pause.");

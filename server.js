@@ -206,41 +206,53 @@ wss.on('connection', (ws) => {
                 break;
 
             case 'JOIN_ROOM':
-                const { roomId, playerId: joinerPlayerId } = parsedMessage.payload;
+                const { roomId, playerId: playerIdFromPayload } = parsedMessage.payload;
+
                 const room = activeRooms.get(roomId);
-                const clientConnectionData = clients.get(ws);
-
-                if (!clientConnectionData || clientConnectionData.id !== joinerPlayerId) {
-                    console.error(`Auth error: Client ${clientConnectionData?.id} tried to join room ${roomId} as ${joinerPlayerId}`);
-                    ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'Player ID mismatch or client data not found.'}}));
-                    return;
-                }
-
                 if (!room) {
-                    console.warn(`Client ${joinerPlayerId} tried to join non-existent room ${roomId}`);
+                    console.warn(`Client (ID from payload: ${playerIdFromPayload}) tried to join non-existent room ${roomId}`);
                     ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'Room not found.' } }));
                     return;
                 }
 
-                const playerInRoom = room.players.find(p => p.id === joinerPlayerId);
-                if (!playerInRoom) {
-                    console.warn(`Player ${joinerPlayerId} not found in room ${roomId}'s player list.`);
-                    ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'You are not part of this room.' } }));
+                const playerRecordInRoom = room.players.find(p => p.id === playerIdFromPayload);
+                if (!playerRecordInRoom) {
+                    console.warn(`Player ${playerIdFromPayload} not found in room ${roomId}'s roster.`);
+                    ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'Player not found in this room.' } }));
                     return;
                 }
 
-                // Update player's WebSocket and status
-                playerInRoom.ws = ws; // This is the new gameSocket connection
-                playerInRoom.status = 'ingame_connected';
-                clientConnectionData.roomId = roomId; // Update client's main mapping with room context
+                // Handle if player is already connected, possibly with an old/stale socket.
+                if (playerRecordInRoom.status === 'ingame_connected' && playerRecordInRoom.ws !== ws) {
+                    console.log(`Player ${playerIdFromPayload} reconnected or connected from a new client for room ${roomId}. Old socket will be orphaned if not closed by client.`);
+                    // Optionally, you could try to close `playerRecordInRoom.ws` if it's different and still open,
+                    // but managing two WebSockets for the same player ID simultaneously can be complex.
+                    // The current approach of overwriting `ws` assumes the new connection is the valid one.
+                }
 
-                console.log(`Player ${joinerPlayerId} successfully joined and connected to room ${roomId}. Player status: ${playerInRoom.status}`);
+                playerRecordInRoom.ws = ws; // Assign the new (game page) WebSocket to this player in the room
+                playerRecordInRoom.status = 'ingame_connected';
+
+                // Update the global clients map with this new ws connection and its context
+                // This is crucial for server-wide knowledge of this active game socket.
+                // The 'clientId' used here is the one associated with this specific ws connection from wss.on('connection')
+                // We need to ensure this 'clientId' (from clients.get(ws).id before this point) is correctly associated
+                // OR, more simply, use playerIdFromPayload as the authoritative ID.
+                const clientDataForThisWS = clients.get(ws);
+                if (clientDataForThisWS && clientDataForThisWS.id !== playerIdFromPayload) {
+                     console.warn(`Initial clientId ${clientDataForThisWS.id} for this WebSocket connection does not match playerId ${playerIdFromPayload} from JOIN_ROOM payload. Updating to payload ID.`);
+                     clientDataForThisWS.id = playerIdFromPayload; // Align the ID
+                }
+                // Now set/update the client in the global map, ensuring roomId is associated.
+                clients.set(ws, { id: playerIdFromPayload, ws: ws, roomId: roomId });
+
+                console.log(`Player ${playerIdFromPayload} successfully updated and connected to room ${roomId}. Player status: ${playerRecordInRoom.status}`);
 
                 ws.send(JSON.stringify({
                     type: 'ROOM_JOIN_CONFIRMATION',
                     payload: {
                         roomId: room.id,
-                        yourPlayerId: joinerPlayerId,
+                        yourPlayerId: playerIdFromPayload,
                         playersInRoom: room.players.map(p => p.id),
                         message: `Successfully joined room ${room.id}. Waiting for other players...`
                     }
